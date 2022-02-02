@@ -1,4 +1,23 @@
-pub const TARGET_WORDS: [&str; 2315] = [
+use crate::Word;
+
+macro_rules! words {
+    ($($x:literal),+ $(,)?) => (
+    [$(word($x)),+]
+    );
+}
+
+const fn word(s: &'static str) -> Word {
+    let mut a: [u8; 5] = [0; 5];
+    let s = s.as_bytes();
+    a[0] = s[0];
+    a[1] = s[1];
+    a[2] = s[2];
+    a[3] = s[3];
+    a[4] = s[4];
+    Word(a)
+}
+
+pub const TARGET_WORDS: [Word; 2315] = words![
     "cigar", "rebut", "sissy", "humph", "awake", "blush", "focal", "evade", "naval", "serve",
     "heath", "dwarf", "model", "karma", "stink", "grade", "quiet", "bench", "abate", "feign",
     "major", "death", "fresh", "crust", "stool", "colon", "abase", "marry", "react", "batty",
@@ -230,10 +249,10 @@ pub const TARGET_WORDS: [&str; 2315] = [
     "vaunt", "organ", "feral", "knock", "extra", "condo", "adapt", "willy", "polka", "rayon",
     "skirt", "faith", "torso", "match", "mercy", "tepid", "sleek", "riser", "twixt", "peace",
     "flush", "catty", "login", "eject", "roger", "rival", "untie", "refit", "aorta", "adult",
-    "judge", "rower", "artsy", "rural", "shave",
+    "judge", "rower", "artsy", "rural", "shave"
 ];
 
-pub const EXTENDED_WORDS: [&str; 10657] = [
+pub const EXTENDED_WORDS: [Word; 10657] = words![
     "aahed", "aalii", "aargh", "aarti", "abaca", "abaci", "abacs", "abaft", "abaka", "abamp",
     "aband", "abash", "abask", "abaya", "abbas", "abbed", "abbes", "abcee", "abeam", "abear",
     "abele", "abers", "abets", "abies", "abler", "ables", "ablet", "ablow", "abmho", "abohm",
@@ -1299,5 +1318,5 @@ pub const EXTENDED_WORDS: [&str; 10657] = [
     "zoeae", "zoeal", "zoeas", "zoism", "zoist", "zombi", "zonae", "zonda", "zoned", "zoner",
     "zones", "zonks", "zooea", "zooey", "zooid", "zooks", "zooms", "zoons", "zooty", "zoppa",
     "zoppo", "zoril", "zoris", "zorro", "zouks", "zowee", "zowie", "zulus", "zupan", "zupas",
-    "zuppa", "zurfs", "zuzim", "zygal", "zygon", "zymes", "zymic",
+    "zuppa", "zurfs", "zuzim", "zygal", "zygon", "zymes", "zymic"
 ];

@@ -29,7 +29,7 @@ use thiserror::Error;
 
 pub mod words;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Word([u8; 5]);
 
 #[derive(Debug, Error)]
@@ -40,6 +40,8 @@ pub enum WordError {
     Length(usize),
     #[error("Words not in the word list: {0}")]
     NotWord(String),
+    #[error("Input doesn't look like a Worlde share")]
+    NotWordle,
     #[error("Unknown Lua Error")]
     Unknown,
 }
@@ -57,12 +59,13 @@ impl TryFrom<&str> for Word {
         if b.len() != 5 {
             return Err(WordError::Length(b.len()));
         }
-        if !TARGET_WORDS.contains(&value) && !EXTENDED_WORDS.contains(&value) {
-            return Err(WordError::NotWord(value.into()));
-        }
         let mut r: [u8; 5] = [0; 5];
         r.copy_from_slice(b);
-        Ok(Word(r))
+        let w = Word(r);
+        if !TARGET_WORDS.contains(&w) && !EXTENDED_WORDS.contains(&w) {
+            return Err(WordError::NotWord(value.into()));
+        }
+        Ok(w)
     }
 }
 
@@ -76,6 +79,12 @@ impl Display for Word {
     }
 }
 
+impl Debug for Word {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Word({})", self))
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LetterGuess {
     Correct,
@@ -83,32 +92,51 @@ pub enum LetterGuess {
     NotUsed,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct GuessStatus(pub [LetterGuess; 5]);
 
 impl TryFrom<&str> for GuessStatus {
     type Error = WordError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        for x in value.chars() {
-            if !"=+-".contains(x) {
+        let chars: Vec<char> = value.chars().collect();
+        for &x in chars.iter() {
+            if !"=+-🟩🟨⬛".contains(x) {
                 return Err(WordError::Chars(value.into(), x));
             }
         }
-        let b = value.as_bytes();
-        if b.len() != 5 {
-            return Err(WordError::Length(b.len()));
+        if chars.len() != 5 {
+            return Err(WordError::Length(chars.len()));
         }
         let mut r: [LetterGuess; 5] = [NotUsed; 5];
-        for (status, symbol) in r.iter_mut().zip(value.chars().into_iter()) {
+        for (status, symbol) in r.iter_mut().zip(chars.into_iter()) {
             match symbol {
-                '=' => *status = LetterGuess::Correct,
-                '+' => *status = LetterGuess::Misplaced,
-                '-' => *status = LetterGuess::NotUsed,
+                '=' | '🟩' => *status = LetterGuess::Correct,
+                '+' | '🟨' => *status = LetterGuess::Misplaced,
+                '-' | '⬛' => *status = LetterGuess::NotUsed,
                 x => return Err(WordError::Chars(value.into(), x)),
             }
         }
         Ok(GuessStatus(r))
+    }
+}
+
+impl Display for GuessStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for status in self.0 {
+            f.write_char(match status {
+                LetterGuess::Correct => '🟩',
+                LetterGuess::Misplaced => '🟨',
+                LetterGuess::NotUsed => '⬛',
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl Debug for GuessStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("GuessStatus({})", self))
     }
 }
 
@@ -143,10 +171,10 @@ impl WordGuess {
                 *r = LetterGuess::Correct;
             }
         }
-        for (i, r) in result.iter_mut().enumerate() {
+        for (r, g) in result.iter_mut().zip(guess.0) {
             if *r != LetterGuess::Correct {
                 for a in available.iter_mut() {
-                    if *a == guess.0[i] {
+                    if *a == g {
                         *a = 0;
                         *r = LetterGuess::Misplaced;
                         break;
@@ -163,7 +191,7 @@ impl WordGuess {
 
 #[cfg(test)]
 mod test {
-    use crate::{LetterGuess, Word, WordGuess};
+    use crate::{LetterGuess, Word, WordGuess, TARGET_WORDS};
     use anyhow::Error;
 
     #[test]
@@ -260,5 +288,22 @@ mod test {
         expected[4] = LetterGuess::Correct;
         assert_eq!(result.status.0, expected);
         Ok(())
+    }
+
+    #[test]
+    fn index_of_day_works() {
+        assert_eq!(
+            TARGET_WORDS
+                .split(|w| *w == Word::try_from("those").unwrap())
+                .next()
+                .unwrap()
+                .len(),
+            227
+        )
+    }
+
+    #[test]
+    fn index_into_day_works() {
+        assert_eq!(TARGET_WORDS[227], Word::try_from("those").unwrap())
     }
 }
