@@ -171,6 +171,10 @@ where
 
 impl WordGuess {
     pub fn guess(guess: Word, target: Word) -> WordGuess {
+        WordGuess::guess_from(guess, &target)
+    }
+
+    pub fn guess_from(guess: Word, target: &Word) -> WordGuess {
         let mut available = target.0;
         let mut result: [LetterGuess; 5] = [LetterGuess::NotUsed; 5];
         for ((t, g), (a, r)) in zip4(

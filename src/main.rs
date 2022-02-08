@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::io;
-use std::io::BufRead;
+use std::io::{BufRead, stdout, Write};
 use std::str::FromStr;
 use structopt::StructOpt;
 use wordle::words::{EXTENDED_WORDS, TARGET_WORDS};
@@ -12,13 +12,19 @@ use rayon::prelude::*;
 #[derive(Debug, StructOpt)]
 enum Opt {
     FilterFromGuess(FilterFromGuessOpt),
-    Analyse,
+    Analyse(AnalyseOpt),
 }
 
 #[derive(Debug, StructOpt)]
 struct FilterFromGuessOpt {
     word: String,
     guess: String,
+    #[structopt(short = "x", long)]
+    extend: bool,
+}
+
+#[derive(Debug, StructOpt)]
+struct AnalyseOpt {
     #[structopt(short = "x", long)]
     extend: bool,
 }
@@ -47,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             results.sort();
             results.iter().for_each(|w| println!("{:?}", w));
         }
-        Opt::Analyse => {
+        Opt::Analyse(opt) => {
             let stdin = io::stdin();
             let mut lines = stdin.lock().lines();
             let first = lines.next().ok_or(WordError::NotWordle)??;
@@ -95,10 +101,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 possible_targets: BTreeMap<Vec<Word>, BTreeSet<Word>>,
             }
 
-            // The default is that no guess could be any of the words, not just the targets
-            // This is because we don't _strictly_ know which words _are_ targets.
-            let start_chain =
-                BTreeMap::from([(vec![], BTreeSet::from_iter(all_words.iter().copied()))]);
+            let initial_guess_chain = BTreeMap::from([(
+                vec![],
+                if opt.extend {
+                    BTreeSet::from_iter(all_words.iter().copied())
+                } else {
+                    BTreeSet::from_iter(TARGET_WORDS.iter().copied())
+                },
+            )]);
 
             let possible_words = guesses.try_fold(vec![], |mut acc: Vec<RowAnalysis>, guess| {
                 let guess = guess?;
@@ -111,10 +121,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let guess_chains: &BTreeMap<Vec<Word>, BTreeSet<Word>> = acc
                     .last()
                     .map(|r| &r.possible_targets)
-                    .unwrap_or(&start_chain);
+                    .unwrap_or(&initial_guess_chain);
 
                 let possible_targets: BTreeMap<Vec<Word>, BTreeSet<Word>> = guess_chains
-                    .into_par_iter()
+                    .par_iter()
                     .flat_map_iter(|(chain, words)| {
                         possible_guesses.iter().map(move |&word| {
                             let mut new_chain = chain.clone();
@@ -122,7 +132,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let new_set: BTreeSet<Word> = words
                                 .iter()
                                 .filter(|&target| {
-                                    let wg = WordGuess::guess(word, *target);
+                                    let wg = WordGuess::guess_from(word, target);
                                     wg.status == guess
                                 })
                                 .copied()
@@ -132,6 +142,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     })
                     .collect();
 
+                print!(".");
+                stdout().flush()?;
                 acc.push(RowAnalysis {
                     guess,
                     possible_guesses,
@@ -140,6 +152,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Ok(acc) as Result<Vec<RowAnalysis>, anyhow::Error>
             });
 
+            println!();
             possible_words?
                 .iter()
                 .for_each(|row| {
