@@ -95,13 +95,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 possible_targets: BTreeMap<Vec<Word>, BTreeSet<Word>>,
             }
 
-            let start_chain =                             // The default is that no guess could be any of the words, not just the targets
-                // This is because we don't _strictly_ know which words _are_ targets.
-                BTreeMap::from([(
-                    vec![],
-                    BTreeSet::from_iter(all_words.iter().copied()),
-                )])
-;
+            // The default is that no guess could be any of the words, not just the targets
+            // This is because we don't _strictly_ know which words _are_ targets.
+            let start_chain =
+                BTreeMap::from([(vec![], BTreeSet::from_iter(all_words.iter().copied()))]);
 
             let possible_words = guesses.try_fold(vec![], |mut acc: Vec<RowAnalysis>, guess| {
                 let guess = guess?;
