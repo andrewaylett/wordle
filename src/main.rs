@@ -5,7 +5,7 @@ use std::io::BufRead;
 use std::str::FromStr;
 use structopt::StructOpt;
 use wordle::words::{EXTENDED_WORDS, TARGET_WORDS};
-use wordle::{GuessStatus, LetterGuess, Word, WordError, WordGuess};
+use wordle::{GuessStatus, Word, WordError, WordGuess};
 
 use rayon::prelude::*;
 
@@ -60,12 +60,28 @@ fn main() -> Result<(), Box<dyn Error>> {
             let puzzle_number = usize::from_str(puzzle_number)?;
             let target = TARGET_WORDS[puzzle_number];
 
+            let maybe_first_guess: Vec<Result<GuessStatus, anyhow::Error>> = parse
+                .next()
+                .map(|rest| {
+                    if rest.contains(':') {
+                        let g = GuessStatus::try_from(rest.trim_start_matches(|char| char != ':'));
+                        match g {
+                            Ok(g) => vec![Ok(g)],
+                            _ => vec![],
+                        }
+                    } else {
+                        vec![]
+                    }
+                })
+                .unwrap_or_else(std::vec::Vec::new);
+
             let guesses = lines
                 .filter(|line| line.as_ref().map(|l| !l.is_empty()).unwrap_or(true))
                 .map(|line| {
                     line.map(|line| GuessStatus::try_from(line.as_str()))?
                         .map_err(Into::into) as anyhow::Result<GuessStatus>
                 });
+            let mut guesses = maybe_first_guess.into_iter().chain(guesses);
 
             let all_words: BTreeSet<Word> = TARGET_WORDS
                 .iter()
@@ -79,9 +95,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 possible_targets: BTreeMap<Vec<Word>, BTreeSet<Word>>,
             }
 
-            let mut possible_words: Vec<RowAnalysis> = vec![];
+            let start_chain =                             // The default is that no guess could be any of the words, not just the targets
+                // This is because we don't _strictly_ know which words _are_ targets.
+                BTreeMap::from([(
+                    vec![],
+                    BTreeSet::from_iter(all_words.iter().copied()),
+                )])
+;
 
-            for guess in guesses {
+            let possible_words = guesses.try_fold(vec![], |mut acc: Vec<RowAnalysis>, guess| {
                 let guess = guess?;
                 let possible_guesses: BTreeSet<Word> = all_words
                     .iter()
@@ -89,14 +111,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .copied()
                     .collect();
 
-                let guess_chains: BTreeMap<Vec<Word>, BTreeSet<Word>> = possible_words
+                let guess_chains: &BTreeMap<Vec<Word>, BTreeSet<Word>> = acc
                     .last()
-                    .map(|r| r.possible_targets.clone())
-                    .unwrap_or_else(|| {
-                        // The default is that no guess could be any of the words, not just the targets
-                        // This is because we don't _strictly_ know which words _are_ targets.
-                        BTreeMap::from([(vec![], BTreeSet::from_iter(all_words.iter().copied()))])
-                    });
+                    .map(|r| &r.possible_targets)
+                    .unwrap_or(&start_chain);
 
                 let possible_targets: BTreeMap<Vec<Word>, BTreeSet<Word>> = guess_chains
                     .into_par_iter()
@@ -117,20 +135,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                     })
                     .collect();
 
-                let analysis = RowAnalysis {
+                acc.push(RowAnalysis {
                     guess,
                     possible_guesses,
                     possible_targets,
-                };
+                });
+                Ok(acc) as Result<Vec<RowAnalysis>, anyhow::Error>
+            });
 
-                possible_words.push(analysis);
-
-                if guess == GuessStatus([LetterGuess::Correct; 5]) {
-                    break;
-                }
-            }
-
-            possible_words
+            possible_words?
                 .iter()
                 .for_each(|row| {
                     let guess = &row.guess;
@@ -141,14 +154,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let (min_path, min_words) = minimum.unwrap();
                     let (max_path, max_words) = maximum.unwrap();
                     println!(
-                        "Guess resulting in {} has {} possible guess{} for between {} and {} targets left, guessing {} and {} respectively.",
+                        "Guess resulting in {} has {} possible guess{} for between {} and {} targets left, guessing {:?} and {:?} respectively.",
                         guess,
                         possible.len(),
                         if possible.len() != 1 { "es" } else { "" },
                         min_words.len(),
                         max_words.len(),
-                        min_path.last().unwrap(),
-                        max_path.last().unwrap(),
+                        min_path,
+                        max_path,
                     )
                 })
         }

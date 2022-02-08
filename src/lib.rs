@@ -94,15 +94,28 @@ pub enum LetterGuess {
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct GuessStatus(pub [LetterGuess; 5]);
-
+// Wordle 232 6/6:black_large_square::large_yellow_square::large_green_square::black_large_square::black_large_square:
+// :black_large_square::black_large_square::black_large_square::black_large_square::large_yellow_square:
+// :large_green_square::large_yellow_square::large_green_square::black_large_square::black_large_square:
+// :large_green_square::black_large_square::large_green_square::large_green_square::large_green_square:
+// :black_large_square::large_yellow_square::black_large_square::large_yellow_square::large_yellow_square:
+// :large_green_square::large_green_square::large_green_square::large_green_square::large_green_square:
 impl TryFrom<&str> for GuessStatus {
     type Error = WordError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let value = if value.contains(':') {
+            value
+                .replacen(":black_large_square:", "-", 5)
+                .replacen(":large_yellow_square:", "+", 5)
+                .replacen(":large_green_square:", "=", 5)
+        } else {
+            value.to_string()
+        };
         let chars: Vec<char> = value.chars().collect();
         for &x in chars.iter() {
             if !"=+-🟩🟨⬛".contains(x) {
-                return Err(WordError::Chars(value.into(), x));
+                return Err(WordError::Chars(value, x));
             }
         }
         if chars.len() != 5 {
@@ -114,7 +127,7 @@ impl TryFrom<&str> for GuessStatus {
                 '=' | '🟩' => *status = LetterGuess::Correct,
                 '+' | '🟨' => *status = LetterGuess::Misplaced,
                 '-' | '⬛' => *status = LetterGuess::NotUsed,
-                x => return Err(WordError::Chars(value.into(), x)),
+                x => return Err(WordError::Chars(value, x)),
             }
         }
         Ok(GuessStatus(r))
