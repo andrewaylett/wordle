@@ -24,7 +24,8 @@
 use crate::words::{EXTENDED_WORDS, TARGET_WORDS};
 use crate::LetterGuess::NotUsed;
 use std::fmt::{Debug, Display, Formatter, Write};
-use std::iter::Zip;
+use std::iter::{Peekable, Zip};
+use std::mem::swap;
 use thiserror::Error;
 
 pub mod words;
@@ -202,6 +203,60 @@ impl WordGuess {
         WordGuess {
             word: guess,
             status: GuessStatus(result),
+        }
+    }
+}
+
+struct WindowIter<I, F, T> where I: Iterator, F: Fn(&T, &I::Item) -> T {
+    inner: Peekable<I>,
+    func: F,
+    carry: Option<T>,
+    started: bool,
+}
+
+trait WindowMap<I: Iterator, F, T> where  F: Fn(&T, &I::Item) -> T {
+    fn window(self, initial: T, func: F) -> WindowIter<I, F, T>;
+}
+
+impl <I, F, T> WindowMap<I, F, T> for I
+where I: Iterator, F: Fn(&T, &I::Item) -> T {
+    fn window(self, initial: T, func: F) -> WindowIter<I, F, T> {
+        WindowIter {
+            inner: self.peekable(),
+            func,
+            carry: Some(initial),
+            started: false,
+        }
+    }
+}
+
+impl <I, F, T> Iterator for WindowIter<I, F, T> where I: Iterator, F: Fn(&T, &I::Item) -> T {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(n) = self.inner.next() {
+            if !self.started {
+                if let Some(carry) = &self.carry {
+                    self.carry = Some((self.func)(carry, &n))
+                } else {
+                    panic!("Invalid state: started iterating but no carry")
+                }
+            }
+            if let Some(next) = self.inner.peek() {
+                if let Some(carry) = &self.carry {
+                    let mut carry = Some((self.func)(carry, next));
+                    swap(&mut carry, &mut self.carry);
+                    carry
+                } else {
+                    panic!("Invalid state: iterating but no carry")
+                }
+            } else {
+                let mut carry = None;
+                swap(&mut carry, &mut self.carry);
+                carry
+            }
+        } else {
+            None
         }
     }
 }
